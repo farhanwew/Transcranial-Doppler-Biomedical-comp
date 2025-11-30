@@ -58,8 +58,8 @@ def analyze_and_label_sqi(dataset_filepath='tcd_dataset.npz'):
     # From step.md: T_high (e.g., 80%), T_low (e.g., 40%)
     
     # Placeholder thresholds based on common practice or initial visual inspection
-    T_high = 80 # Example: Segments with median SQI >= 80 are GOOD
-    T_low = 40  # Example: Segments with median SQI <= 40 are BAD
+    T_high = 0.85 # Example: Segments with median SQI >= 0.85 are GOOD
+    T_low = 0.50  # Example: Segments with median SQI <= 0.50 are BAD
 
     # --- Create quality_labels_sqi for Healthy segments ---
     # Re-calculate sqi_seg based on original arrays for consistent indexing

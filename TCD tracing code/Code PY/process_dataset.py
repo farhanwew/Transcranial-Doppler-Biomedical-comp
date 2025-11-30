@@ -127,9 +127,9 @@ def process_recording(filepath):
             # Save the FULL SQI array for visualization (like Figure 5)
             valid_sqi_arrays.append(w_sqi)
         
-    return valid_cbfv, valid_sqi_arrays, corrupted_cbfv, corrupted_reasons
+    return valid_cbfv, valid_sqi_arrays, corrupted_cbfv, corrupted_reasons, fs_sp
 
-def visualize_single_segment(segment, sqi_segment=None, title="CBFV Segment", segment_idx=None, reason=None):
+def visualize_single_segment(segment, sqi_segment=None, title="CBFV Segment", segment_idx=None, reason=None, fs=None):
     """
     Visualizes a single 1024-sample CBFV segment and optional SQI plot.
     Matches the style of the reference figure (Envelope + SQI).
@@ -139,22 +139,30 @@ def visualize_single_segment(segment, sqi_segment=None, title="CBFV Segment", se
         full_title += f" - Idx {segment_idx}"
     if reason:
         full_title += f" ({reason})"
+    
+    # Time axis calculation
+    if fs:
+        t_axis = np.arange(len(segment)) / fs
+        x_label = "Time [s]"
+    else:
+        t_axis = np.arange(len(segment))
+        x_label = "Sample Index"
         
     if sqi_segment is not None:
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
         
         # Plot Envelope
-        ax1.plot(segment, 'r', linewidth=1.5, label='Envelope')
+        ax1.plot(t_axis, segment, 'r', linewidth=1.5, label='Envelope')
         ax1.set_ylabel("CBFV [cm/s]")
         ax1.set_title(full_title)
         ax1.legend(loc='upper right')
         ax1.grid(True)
         
         # Plot SQI
-        ax2.plot(sqi_segment * 100, 'r', linewidth=1.5, label='SQI') # Scale to %
+        ax2.plot(t_axis, sqi_segment * 100, 'r', linewidth=1.5, label='SQI') # Scale to %
         ax2.set_ylabel("SQI [%]")
         ax2.set_ylim([-5, 105]) # Fixed range for SQI
-        ax2.set_xlabel("Sample Index")
+        ax2.set_xlabel(x_label)
         ax2.set_title("Signal Quality Index")
         ax2.grid(True)
         
@@ -162,9 +170,9 @@ def visualize_single_segment(segment, sqi_segment=None, title="CBFV Segment", se
         plt.show()
     else:
         plt.figure(figsize=(10, 4))
-        plt.plot(segment)
+        plt.plot(t_axis, segment)
         plt.title(full_title)
-        plt.xlabel("Sample Index")
+        plt.xlabel(x_label)
         plt.ylabel("CBFV [cm/s]")
         plt.grid(True)
         plt.show()
@@ -190,23 +198,50 @@ def main():
     print(f"Found {len(icu_files)} ICU recordings (filtered by _MCA).")
     
     # Create output directory for processed segments
-    os.makedirs("processed_segments", exist_ok=True)
-    print(f"Processed segments will be saved to: {os.path.abspath('processed_segments')}")
+    output_dir = "processed_segments"
+    os.makedirs(output_dir, exist_ok=True)
+    print(f"Processed segments will be saved to: {os.path.abspath(output_dir)}")
+    
+    # Store sample data and their fs for visualization later
+    sample_healthy_valid = []
+    sample_healthy_sqi = []
+    sample_healthy_fs = None # To store fs for healthy samples
+    
+    sample_icu_valid = []
+    sample_icu_sqi = []
+    sample_icu_fs = None # To store fs for icu samples
+    
+    sample_corrupted = []
+    sample_corrupted_reason = []
+    sample_corrupted_fs = None # To store fs for corrupted samples
     
     # Process Healthy
     for f in healthy_files:
         filename = os.path.basename(f)
         print(f"Processing {filename} from {healthy_data_path}...")
-        v_cbfv, v_sqi, c_cbfv, c_reasons = process_recording(f)
+        v_cbfv, v_sqi, c_cbfv, c_reasons, fs_rec = process_recording(f)
         
+        if len(v_cbfv) > 0:
+            # Keep some samples for viz
+            if len(sample_healthy_valid) < 5:
+                sample_healthy_valid.extend(v_cbfv[:2])
+                sample_healthy_sqi.extend(v_sqi[:2])
+                sample_healthy_fs = fs_rec # Update fs
+        
+        if len(c_cbfv) > 0 and len(sample_corrupted) < 5:
+             sample_corrupted.extend(c_cbfv[:2])
+             sample_corrupted_reason.extend(c_reasons[:2])
+             sample_corrupted_fs = fs_rec # Update fs for corrupted samples
+
         if len(v_cbfv) > 0 or len(c_cbfv) > 0:
-            save_path = os.path.join("processed_segments", f"{os.path.splitext(filename)[0]}_segments.npz")
+            save_path = os.path.join(output_dir, f"{os.path.splitext(filename)[0]}_segments.npz")
             np.savez(save_path, 
                      valid_cbfv=v_cbfv, 
                      valid_sqi=v_sqi, 
                      corrupted_cbfv=c_cbfv, 
                      corrupted_reasons=c_reasons,
-                     class_label='Healthy')
+                     class_label='Healthy',
+                     fs=fs_rec) # Save fs too
             print(f"  Saved {len(v_cbfv)} valid segments to {save_path}")
         else:
             print(f"  No segments generated for {filename}")
@@ -215,25 +250,73 @@ def main():
     for f in icu_files:
         filename = os.path.basename(f)
         print(f"Processing {filename} from {icu_data_path}...")
-        v_cbfv, v_sqi, c_cbfv, c_reasons = process_recording(f)
+        v_cbfv, v_sqi, c_cbfv, c_reasons, fs_rec = process_recording(f)
+        
+        if len(v_cbfv) > 0:
+             if len(sample_icu_valid) < 5:
+                sample_icu_valid.extend(v_cbfv[:2])
+                sample_icu_sqi.extend(v_sqi[:2])
+                sample_icu_fs = fs_rec # Update fs
+                
+        if len(c_cbfv) > 0 and len(sample_corrupted) < 10: # More corrupted samples
+             sample_corrupted.extend(c_cbfv[:2])
+             sample_corrupted_reason.extend(c_reasons[:2])
+             sample_corrupted_fs = fs_rec # Update fs for corrupted samples
         
         if len(v_cbfv) > 0 or len(c_cbfv) > 0:
-            save_path = os.path.join("processed_segments", f"{os.path.splitext(filename)[0]}_segments.npz")
+            save_path = os.path.join(output_dir, f"{os.path.splitext(filename)[0]}_segments.npz")
             np.savez(save_path, 
                      valid_cbfv=v_cbfv, 
                      valid_sqi=v_sqi, 
                      corrupted_cbfv=c_cbfv, 
                      corrupted_reasons=c_reasons,
-                     class_label='ICU')
+                     class_label='ICU',
+                     fs=fs_rec)
             print(f"  Saved {len(v_cbfv)} valid segments to {save_path}")
         else:
             print(f"  No segments generated for {filename}")
 
     print("\n--- Processing Complete ---")
-    print(f"Check the 'processed_segments' folder for individual .npz files.")
+    print(f"Check the '{output_dir}' folder for individual .npz files.")
 
-    # Note: Visualization part removed from main loop to keep it fast. 
-    # You can visualize individual .npz files later using a separate script.
+    # --- Visualization ---
+    print("\n--- Visualizing Sample Segments (Envelope + SQI) ---")
+    
+    # 1. Visualize Valid Healthy
+    if len(sample_healthy_valid) > 0:
+        idx = random.randint(0, len(sample_healthy_valid) - 1)
+        visualize_single_segment(
+            sample_healthy_valid[idx], 
+            sqi_segment=sample_healthy_sqi[idx],
+            title="Valid Healthy Segment", 
+            segment_idx=idx,
+            fs=sample_healthy_fs
+        )
+        
+    # 2. Visualize Valid ICU
+    if len(sample_icu_valid) > 0:
+        idx = random.randint(0, len(sample_icu_valid) - 1)
+        visualize_single_segment(
+            sample_icu_valid[idx], 
+            sqi_segment=sample_icu_sqi[idx],
+            title="Valid ICU Segment", 
+            segment_idx=idx,
+            fs=sample_icu_fs
+        )
+
+    # 3. Visualize Corrupted
+    if len(sample_corrupted) > 0:
+        idx = random.randint(0, len(sample_corrupted) - 1)
+        reason = sample_corrupted_reason[idx]
+        visualize_single_segment(
+            sample_corrupted[idx], 
+            title="Corrupted Segment", 
+            segment_idx=idx, 
+            reason=reason,
+            fs=sample_corrupted_fs if sample_corrupted_fs else 217.0 # Fallback fs
+        )
+    else:
+        print("No corrupted segments found to visualize.")
 
 if __name__ == "__main__":
     main()
