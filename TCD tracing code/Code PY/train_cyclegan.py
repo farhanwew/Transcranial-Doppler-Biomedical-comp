@@ -9,14 +9,16 @@ import matplotlib.pyplot as plt
 
 from cyclegan_model import Generator, Discriminator
 
+import argparse
+
 def train_cyclegan(
-    dataset_path='tcd_dataset.npz', 
-    labels_path='sqi_labels.npz', 
-    epochs=20, # Reduced epochs for quick demo, increase for real training (e.g., 100-200)
-    batch_size=16, 
-    lr=0.0002, 
-    b1=0.5, 
-    b2=0.999
+    dataset_path, 
+    labels_path, 
+    epochs, 
+    batch_size, 
+    lr, 
+    b1, 
+    b2
 ):
     
     if not os.path.exists(dataset_path) or not os.path.exists(labels_path):
@@ -24,7 +26,7 @@ def train_cyclegan(
         return
 
     # --- 1. Data Preparation ---
-    print("Loading data for CycleGAN...")
+    print(f"Loading data for CycleGAN from {dataset_path} and {labels_path}...")
     data = np.load(dataset_path, allow_pickle=True)
     labels = np.load(labels_path, allow_pickle=True)
     
@@ -98,7 +100,7 @@ def train_cyclegan(
     optimizer_D_B = optim.Adam(D_B.parameters(), lr=lr, betas=(b1, b2))
 
     # --- 3. Training Loop ---
-    print(f"Starting CycleGAN training for {epochs} epochs...")
+    print(f"Starting CycleGAN training for {epochs} epochs with batch size {batch_size}...")
     
     loss_history = {'G': [], 'D': []}
 
@@ -194,4 +196,23 @@ def train_cyclegan(
         print("Sample visualization saved.")
 
 if __name__ == "__main__":
-    train_cyclegan()
+    parser = argparse.ArgumentParser(description="Train CycleGAN for TCD signal restoration.")
+    parser.add_argument('--dataset_path', type=str, default='tcd_dataset.npz', help='Path to the dataset file.')
+    parser.add_argument('--labels_path', type=str, default='sqi_labels.npz', help='Path to the labels file.')
+    parser.add_argument('--epochs', type=int, default=20, help='Number of training epochs.')
+    parser.add_argument('--batch_size', type=int, default=16, help='Batch size for training.')
+    parser.add_argument('--lr', type=float, default=0.0002, help='Learning rate.')
+    parser.add_argument('--b1', type=float, default=0.5, help='Adam: decay of first order momentum of gradient')
+    parser.add_argument('--b2', type=float, default=0.999, help='Adam: decay of second order momentum of gradient')
+    
+    args = parser.parse_args()
+    
+    train_cyclegan(
+        dataset_path=args.dataset_path,
+        labels_path=args.labels_path,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        lr=args.lr,
+        b1=args.b1,
+        b2=args.b2
+    )
