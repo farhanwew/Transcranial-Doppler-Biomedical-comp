@@ -189,77 +189,51 @@ def main():
     print(f"Found {len(healthy_files)} Healthy recordings.")
     print(f"Found {len(icu_files)} ICU recordings (filtered by _MCA).")
     
-    # Containers
-    data_store = {
-        'healthy_valid': [],
-        'healthy_sqi': [], # Now stores arrays
-        'healthy_corrupted': [],
-        'healthy_corrupted_reasons': [],
-        
-        'icu_valid': [],
-        'icu_sqi': [], # Now stores arrays
-        'icu_corrupted': [],
-        'icu_corrupted_reasons': []
-    }
+    # Create output directory for processed segments
+    os.makedirs("processed_segments", exist_ok=True)
+    print(f"Processed segments will be saved to: {os.path.abspath('processed_segments')}")
     
     # Process Healthy
     for f in healthy_files:
-        print(f"Processing {os.path.basename(f)} from {healthy_data_path}...")
+        filename = os.path.basename(f)
+        print(f"Processing {filename} from {healthy_data_path}...")
         v_cbfv, v_sqi, c_cbfv, c_reasons = process_recording(f)
-        data_store['healthy_valid'].extend(v_cbfv)
-        data_store['healthy_sqi'].extend(v_sqi)
-        data_store['healthy_corrupted'].extend(c_cbfv)
-        data_store['healthy_corrupted_reasons'].extend(c_reasons)
+        
+        if len(v_cbfv) > 0 or len(c_cbfv) > 0:
+            save_path = os.path.join("processed_segments", f"{os.path.splitext(filename)[0]}_segments.npz")
+            np.savez(save_path, 
+                     valid_cbfv=v_cbfv, 
+                     valid_sqi=v_sqi, 
+                     corrupted_cbfv=c_cbfv, 
+                     corrupted_reasons=c_reasons,
+                     class_label='Healthy')
+            print(f"  Saved {len(v_cbfv)} valid segments to {save_path}")
+        else:
+            print(f"  No segments generated for {filename}")
         
     # Process ICU
     for f in icu_files:
-        print(f"Processing {os.path.basename(f)} from {icu_data_path}...")
+        filename = os.path.basename(f)
+        print(f"Processing {filename} from {icu_data_path}...")
         v_cbfv, v_sqi, c_cbfv, c_reasons = process_recording(f)
-        data_store['icu_valid'].extend(v_cbfv)
-        data_store['icu_sqi'].extend(v_sqi)
-        data_store['icu_corrupted'].extend(c_cbfv)
-        data_store['icu_corrupted_reasons'].extend(c_reasons)
         
-    # Summary
-    print("\n--- Dataset Creation Summary ---")
-    print(f"Healthy Valid Segments: {len(data_store['healthy_valid'])}")
-    print(f"Healthy Corrupted Segments: {len(data_store['healthy_corrupted'])}")
-    print(f"ICU Valid Segments: {len(data_store['icu_valid'])}")
-    print(f"ICU Corrupted Segments: {len(data_store['icu_corrupted'])}")
-    
-    if len(data_store['healthy_valid']) == 0 and len(data_store['icu_valid']) == 0:
-        print("No valid segments created. (Data missing?)")
-        return
+        if len(v_cbfv) > 0 or len(c_cbfv) > 0:
+            save_path = os.path.join("processed_segments", f"{os.path.splitext(filename)[0]}_segments.npz")
+            np.savez(save_path, 
+                     valid_cbfv=v_cbfv, 
+                     valid_sqi=v_sqi, 
+                     corrupted_cbfv=c_cbfv, 
+                     corrupted_reasons=c_reasons,
+                     class_label='ICU')
+            print(f"  Saved {len(v_cbfv)} valid segments to {save_path}")
+        else:
+            print(f"  No segments generated for {filename}")
 
-    # Save
-    dataset_filepath = 'tcd_dataset.npz'
-    np.savez(dataset_filepath, **data_store)
-    print(f"Segments and Full SQI arrays saved to {dataset_filepath}")
+    print("\n--- Processing Complete ---")
+    print(f"Check the 'processed_segments' folder for individual .npz files.")
 
-    # --- Visualization ---
-    print("\n--- Visualizing Sample Segments (Envelope + SQI) ---")
-    
-    # 1. Visualize Valid
-    if len(data_store['healthy_valid']) > 0:
-        idx = random.randint(0, len(data_store['healthy_valid']) - 1)
-        visualize_single_segment(
-            data_store['healthy_valid'][idx], 
-            sqi_segment=data_store['healthy_sqi'][idx],
-            title="Valid Healthy Segment", 
-            segment_idx=idx
-        )
-        
-    # 2. Visualize Corrupted (if any)
-    if len(data_store['healthy_corrupted']) > 0:
-        idx = random.randint(0, len(data_store['healthy_corrupted']) - 1)
-        reason = data_store['healthy_corrupted_reasons'][idx]
-        visualize_single_segment(data_store['healthy_corrupted'][idx], title="Corrupted Healthy Segment", segment_idx=idx, reason=reason)
-    elif len(data_store['icu_corrupted']) > 0:
-        idx = random.randint(0, len(data_store['icu_corrupted']) - 1)
-        reason = data_store['icu_corrupted_reasons'][idx]
-        visualize_single_segment(data_store['icu_corrupted'][idx], title="Corrupted ICU Segment", segment_idx=idx, reason=reason)
-    else:
-        print("No corrupted segments found to visualize.")
+    # Note: Visualization part removed from main loop to keep it fast. 
+    # You can visualize individual .npz files later using a separate script.
 
 if __name__ == "__main__":
     main()

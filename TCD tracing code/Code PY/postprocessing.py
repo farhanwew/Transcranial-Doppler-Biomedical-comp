@@ -2,7 +2,7 @@ import numpy as np
 from scipy import signal
 
 def postprocess_cbfv(cbfv, fs):
-    if fs is None or np.isnan(fs):
+    if fs is None or np.isnan(fs) or fs <= 1e-6:
         return cbfv
         
     fc = 50
