@@ -12,8 +12,7 @@ from cyclegan_model import Generator, Discriminator
 import argparse
 
 def train_cyclegan(
-    dataset_path, 
-    labels_path, 
+    train_data_path, 
     epochs, 
     batch_size, 
     lr, 
@@ -21,26 +20,45 @@ def train_cyclegan(
     b2
 ):
     
-    if not os.path.exists(dataset_path) or not os.path.exists(labels_path):
-        print("Error: Data files not found. Please run previous steps first.")
+    if not os.path.exists(train_data_path):
+        print(f"Error: Train data file not found at {train_data_path}. Run split_dataset.py first.")
         return
 
     # --- 1. Data Preparation ---
-    print(f"Loading data for CycleGAN from {dataset_path} and {labels_path}...")
-    data = np.load(dataset_path, allow_pickle=True)
-    labels = np.load(labels_path, allow_pickle=True)
+    print(f"Loading training data for CycleGAN from {train_data_path}...")
+    data = np.load(train_data_path, allow_pickle=True)
     
     # Combine Healthy and ICU data to get full domain pools
-    # We need the actual segments corresponding to the labels
-    # Assuming labels align with valid segments in tcd_dataset.npz
-    
     # Healthy
     h_segs = data['healthy_valid']
-    h_labels = labels['healthy_quality_labels']
+    
+    # Determine which label key to use. 
+    # split_dataset.py saves all scenarios. Let's default to the first available scenario or 'Default'.
+    # We need to find a valid label key.
+    available_keys = data.files
+    label_suffix = None
+    for key in available_keys:
+        if key.startswith('healthy_quality_labels_'):
+            label_suffix = key.replace('healthy_quality_labels_', '')
+            break # Use the first found scenario
+            
+    if label_suffix:
+        h_label_key = f'healthy_quality_labels_{label_suffix}'
+        i_label_key = f'icu_quality_labels_{label_suffix}'
+        print(f"Using quality labels from scenario: {label_suffix}")
+    else:
+        # Fallback if no scenario key found (legacy)
+        h_label_key = 'healthy_quality_labels'
+        i_label_key = 'icu_quality_labels'
+        if h_label_key not in available_keys:
+             print("Error: Quality labels not found in dataset.")
+             return
+
+    h_labels = data[h_label_key]
     
     # ICU
     i_segs = data['icu_valid']
-    i_labels = labels['icu_quality_labels']
+    i_labels = data[i_label_key]
     
     # Filter domains
     # Domain A: Borderline (-1) - Source
@@ -197,8 +215,7 @@ def train_cyclegan(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train CycleGAN for TCD signal restoration.")
-    parser.add_argument('--dataset_path', type=str, default='tcd_dataset.npz', help='Path to the dataset file.')
-    parser.add_argument('--labels_path', type=str, default='sqi_labels.npz', help='Path to the labels file.')
+    parser.add_argument('--train_data_path', type=str, default='tcd_train.npz', help='Path to the training dataset file.')
     parser.add_argument('--epochs', type=int, default=20, help='Number of training epochs.')
     parser.add_argument('--batch_size', type=int, default=16, help='Batch size for training.')
     parser.add_argument('--lr', type=float, default=0.0002, help='Learning rate.')
@@ -208,8 +225,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     train_cyclegan(
-        dataset_path=args.dataset_path,
-        labels_path=args.labels_path,
+        train_data_path=args.train_data_path,
         epochs=args.epochs,
         batch_size=args.batch_size,
         lr=args.lr,

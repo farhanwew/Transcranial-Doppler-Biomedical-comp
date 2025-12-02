@@ -1,6 +1,6 @@
-# Panduan Eksekusi Pipeline TCD SQA & Klasifikasi
+# Panduan Eksekusi Pipeline TCD SQA & Klasifikasi (End-to-End)
 
-Dokumen ini menjelaskan langkah-langkah untuk menjalankan seluruh pipeline proyek, mulai dari pemrosesan data mentah hingga klasifikasi akhir.
+Dokumen ini menjelaskan langkah-langkah lengkap untuk menjalankan seluruh pipeline proyek, mulai dari pemrosesan data mentah hingga klasifikasi akhir, termasuk semua visualisasi.
 
 ## 1. Persiapan Lingkungan (Google Colab)
 
@@ -17,21 +17,7 @@ Pastikan struktur folder Anda di Google Colab (atau Google Drive yang di-mount) 
 │       └── ...
 └── TCD tracing code/
     └── Code PY/                <-- Folder Kode Python
-        ├── __init__.py
-        ├── main.py
-        ├── preprocessing.py
-        ├── spectrogram_utils.py
-        ├── tracing.py
-        ├── sqa.py
-        ├── postprocessing.py
-        ├── process_dataset.py
-        ├── analyze_and_label_sqi.py
-        ├── vae_model.py
-        ├── train_vae.py
-        ├── cyclegan_model.py
-        ├── train_cyclegan.py
-        ├── classifier_model.py
-        └── train_classifier.py
+        ├── ... (semua script .py)
 ```
 
 ---
@@ -52,12 +38,22 @@ Script ini akan membaca data mentah, mengekstrak envelope CBFV & SQI, memotong m
     --icu_path "/content/TCD_Data/ICU Patients"
 ```
 
-*   **Output:** `tcd_dataset.npz` (Dataset segmen valid dan corrupted).
-*   **Visualisasi:** Script juga akan menampilkan contoh plot segmen envelope dan SQI.
+*   **Output:** File `.npz` individual di folder `processed_segments/`.
+*   **Visualisasi:** Menampilkan contoh plot segmen envelope dan SQI dengan sumbu waktu yang benar.
 
-### Langkah 2: Analisis SQI & Pelabelan Kualitas (Core SQA)
+### Langkah 2: Agregasi Dataset
 
-Script ini menganalisis distribusi SQI dari segmen valid, menentukan threshold kualitas, dan memberikan label otomatis (GOOD/BAD/BORDERLINE).
+Menggabungkan semua segmen valid dari file `.npz` individual menjadi satu dataset master.
+
+```python
+!python aggregate_segments.py
+```
+
+*   **Output:** `tcd_dataset.npz` (Dataset gabungan).
+
+### Langkah 3: Analisis SQI & Pelabelan Kualitas (Core SQA)
+
+Script ini menganalisis distribusi SQI, menentukan threshold kualitas (Tight/Loose), dan memberikan label otomatis (GOOD/BAD/BORDERLINE).
 
 ```python
 !python analyze_and_label_sqi.py
@@ -67,52 +63,78 @@ Script ini menganalisis distribusi SQI dari segmen valid, menentukan threshold k
     *   `sqi_labels.npz`: File berisi label kualitas untuk setiap segmen.
     *   `sqi_seg_distribution.png`: Histogram distribusi nilai SQI.
 
-### Langkah 3: (Opsional) Training VAE
+### Langkah 4: Visualisasi Kualitatif (Tambahan)
 
-Script ini melatih model Variational Autoencoder (VAE) untuk mempelajari pola sinyal normal dan menghitung *reconstruction error* sebagai fitur kualitas tambahan.
+Dua script ini memberikan bukti visual tentang kualitas sinyal.
+
+**A. Gradasi Kualitas (Low -> High)**
+Menampilkan contoh sinyal pada target SQI 0.1, 0.3, 0.5, 0.7, dan 0.9.
+```python
+!python visualize_sqi_progression.py
+```
+*   **Output:** `sqi_progression.png`.
+
+**B. Sampel Kategori (Good/Borderline/Bad)**
+Menampilkan grid sampel acak untuk setiap kategori kualitas.
+```python
+!python visualize_quality_samples.py
+```
+*   **Output:** `quality_samples.png`.
+
+### Langkah 5: Split Data (Train/Test)
+
+Memisahkan data menjadi set Latih dan Uji agar evaluasi valid.
 
 ```python
-!python train_vae.py
+!python split_dataset.py
+```
+
+*   **Output:** `tcd_train.npz` dan `tcd_test.npz`.
+
+### Langkah 6: (Opsional) Training VAE
+
+Melatih VAE untuk belajar bentuk sinyal normal dan menghitung *reconstruction error*.
+
+```python
+!python train_vae.py --dataset_filepath tcd_train.npz
+```
+
+*   **Output:** `vae_model.pth`, `recon_errors.npz`.
+*   **Visualisasi VAE:** `!python visualize_vae_performance.py` -> `vae_performance_analysis.png`.
+
+### Langkah 7: (Opsional) Training CycleGAN untuk Restorasi
+
+Melatih CycleGAN untuk mengubah segmen BORDERLINE menjadi GOOD.
+
+```python
+!python train_cyclegan.py --train_data_path tcd_train.npz --epochs 50
+```
+
+*   **Output:** `generator_AB.pth`.
+*   **Visualisasi GAN:** `!python visualize_gan_restoration.py` -> `gan_restoration_analysis.png`.
+
+### Langkah 8: Training Klasifikasi (Healthy vs ICU) - FINAL
+
+Melatih model klasifikasi (ResNet18 & Self-ResNet18) dengan berbagai skenario data.
+
+```python
+!python train_classifier.py --epochs 20
 ```
 
 *   **Output:**
-    *   `vae_model.pth`: Model VAE terlatih.
-    *   `recon_errors.npz`: Error rekonstruksi untuk setiap segmen.
-    *   `vae_training_loss.png` & `vae_reconstruction_sample.png`.
-
-### Langkah 4: (Opsional) Training CycleGAN untuk Restorasi
-
-Script ini melatih CycleGAN untuk mengubah segmen kualitas BORDERLINE menjadi menyerupai segmen GOOD.
-
-```python
-!python train_cyclegan.py
-```
-
-*   **Output:**
-    *   `generator_AB.pth`: Model generator (Borderline -> Good).
-    *   `cyclegan_restoration_sample.png`: Contoh hasil restorasi sinyal.
-
-### Langkah 5: Training Klasifikasi (Healthy vs ICU)
-
-Script ini adalah eksperimen utama. Ia melatih model CNN 1D untuk membedakan pasien Healthy dan ICU menggunakan berbagai skenario data (Baseline vs SQA).
-
-```python
-!python train_classifier.py
-```
-
-*   **Skenario yang Dijalankan:**
-    1.  **Baseline (No SQA):** Menggunakan semua segmen valid.
-    .   **Proposed (SQA - Good Only):** Hanya menggunakan segmen berlabel GOOD.
-    3.  **Proposed + GAN (Jika ada):** Menggunakan segmen GOOD + segmen BORDERLINE yang direstorasi.
-*   **Output:**
-    *   Metrik performa (Akurasi, AUC, Sensitivitas, Spesifisitas) di terminal.
-    *   `classification_results.png`: Grafik perbandingan performa antar skenario.
+    *   Metrik performa lengkap.
+    *   `classification_results_all_models.png`: Grafik perbandingan performa antar skenario.
 
 ---
 
-## 3. Catatan Tambahan
+## 3. Ringkasan File Output
 
-*   Pastikan path data di Langkah 1 disesuaikan dengan lokasi sebenarnya di Google Drive/Colab Anda.
-*   Langkah 3 (VAE) dan 4 (CycleGAN) bersifat opsional. Pipeline klasifikasi (Langkah 5) akan tetap berjalan (dengan melewatkan skenario GAN) jika langkah tersebut dilewati.
+| File |
+| :--- | 
+| `tcd_dataset.npz` | Dataset utama berisi segmen CBFV dan SQI valid. |
+| `sqi_labels.npz` | Label kualitas (GOOD/BAD/BORDERLINE) untuk segmen. |
+| `sqi_progression.png` | Visualisasi gradasi kualitas sinyal (0.1 - 0.9). |
+| `quality_samples.png` | Grid sampel sinyal Good, Borderline, Bad. |
+| `classification_results_all_models.png` | Grafik hasil akhir perbandingan klasifikasi. |
 
 ```

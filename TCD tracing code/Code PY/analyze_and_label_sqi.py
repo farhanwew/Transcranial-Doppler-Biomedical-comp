@@ -53,39 +53,51 @@ def analyze_and_label_sqi(dataset_filepath='tcd_dataset.npz'):
     print("SQI_seg distribution histogram saved to sqi_seg_distribution.png")
 
 
-    # --- Determining Thresholds and Creating Labels ---
-    # These thresholds are examples and should be adjusted based on the histogram.
-    # From step.md: T_high (e.g., 80%), T_low (e.g., 40%)
+    # --- Determining Thresholds and Creating Labels (Multi-Scenario) ---
     
-    # Placeholder thresholds based on common practice or initial visual inspection
-    T_high = 0.85 # Example: Segments with median SQI >= 0.85 are GOOD
-    T_low = 0.50  # Example: Segments with median SQI <= 0.50 are BAD
+    # Define threshold scenarios
+    threshold_scenarios = [
+        {'name': 'Tight', 'T_high': 0.85, 'T_low': 0.70}, # Based on Wadehn paper (0.7) and distribution
+        {'name': 'Loose', 'T_high': 0.75, 'T_low': 0.60}  # More permissive
+    ]
+    
+    labels_to_save = {
+        'healthy_sqi_seg': healthy_sqi_seg,
+        'icu_sqi_seg': icu_sqi_seg,
+        'scenarios': threshold_scenarios # Save scenario metadata if possible, or just use keys
+    }
 
-    # --- Create quality_labels_sqi for Healthy segments ---
-    # Re-calculate sqi_seg based on original arrays for consistent indexing
-    _healthy_sqi_seg_for_labeling = np.array([np.nanmedian(arr) if arr.size > 0 else np.nan for arr in data['healthy_sqi']])
-    healthy_quality_labels = np.full(len(_healthy_sqi_seg_for_labeling), -1, dtype=int) # -1 for BORDERLINE initially
-    healthy_quality_labels[_healthy_sqi_seg_for_labeling >= T_high] = 1 # GOOD
-    healthy_quality_labels[_healthy_sqi_seg_for_labeling <= T_low] = 0 # BAD
+    for scenario in threshold_scenarios:
+        name = scenario['name']
+        T_high = scenario['T_high']
+        T_low = scenario['T_low']
+        
+        print(f"\n--- Processing Scenario: {name} (High={T_high}, Low={T_low}) ---")
 
-    # --- Create quality_labels_sqi for ICU segments ---
-    _icu_sqi_seg_for_labeling = np.array([np.nanmedian(arr) if arr.size > 0 else np.nan for arr in data['icu_sqi']])
-    icu_quality_labels = np.full(len(_icu_sqi_seg_for_labeling), -1, dtype=int) # -1 for BORDERLINE initially
-    icu_quality_labels[_icu_sqi_seg_for_labeling >= T_high] = 1 # GOOD
-    icu_quality_labels[_icu_sqi_seg_for_labeling <= T_low] = 0 # BAD
+        # --- Create quality_labels for Healthy segments ---
+        # Re-calculate sqi_seg based on original arrays for consistent indexing
+        _healthy_sqi_seg_for_labeling = np.array([np.nanmedian(arr) if arr.size > 0 else np.nan for arr in data['healthy_sqi']])
+        healthy_labels = np.full(len(_healthy_sqi_seg_for_labeling), -1, dtype=int) # -1 for BORDERLINE
+        healthy_labels[_healthy_sqi_seg_for_labeling >= T_high] = 1 # GOOD
+        healthy_labels[_healthy_sqi_seg_for_labeling <= T_low] = 0 # BAD
 
-    print(f"\nUsing T_high={T_high} and T_low={T_low} for labeling:")
-    print(f"  Healthy: GOOD={np.sum(healthy_quality_labels == 1)}, BAD={np.sum(healthy_quality_labels == 0)}, BORDERLINE={np.sum(healthy_quality_labels == -1)}")
-    print(f"  ICU: GOOD={np.sum(icu_quality_labels == 1)}, BAD={np.sum(icu_quality_labels == 0)}, BORDERLINE={np.sum(icu_quality_labels == -1)}")
+        # --- Create quality_labels for ICU segments ---
+        _icu_sqi_seg_for_labeling = np.array([np.nanmedian(arr) if arr.size > 0 else np.nan for arr in data['icu_sqi']])
+        icu_labels = np.full(len(_icu_sqi_seg_for_labeling), -1, dtype=int) # -1 for BORDERLINE
+        icu_labels[_icu_sqi_seg_for_labeling >= T_high] = 1 # GOOD
+        icu_labels[_icu_sqi_seg_for_labeling <= T_low] = 0 # BAD
+
+        print(f"  Healthy: GOOD={np.sum(healthy_labels == 1)}, BAD={np.sum(healthy_labels == 0)}, BORDERLINE={np.sum(healthy_labels == -1)}")
+        print(f"  ICU: GOOD={np.sum(icu_labels == 1)}, BAD={np.sum(icu_labels == 0)}, BORDERLINE={np.sum(icu_labels == -1)}")
+        
+        # Add to save dict with specific keys
+        labels_to_save[f'healthy_quality_labels_{name}'] = healthy_labels
+        labels_to_save[f'icu_quality_labels_{name}'] = icu_labels
 
     # Save quality labels back to the dataset
-    # It's better to save a new file for labels and thresholds to avoid modifying the original data npz
     sqi_labels_filepath = 'sqi_labels.npz'
-    np.savez(sqi_labels_filepath, 
-             healthy_sqi_seg=healthy_sqi_seg, healthy_quality_labels=healthy_quality_labels,
-             icu_sqi_seg=icu_sqi_seg, icu_quality_labels=icu_quality_labels,
-             T_high=T_high, T_low=T_low)
-    print(f"SQI_seg values and quality labels saved to {sqi_labels_filepath}")
+    np.savez(sqi_labels_filepath, **labels_to_save)
+    print(f"\nSQI values and multiple quality label sets saved to {sqi_labels_filepath}")
 
 if __name__ == "__main__":
     analyze_and_label_sqi()

@@ -25,35 +25,51 @@ def visualize_quality_samples(dataset_path='tcd_dataset.npz', labels_path='sqi_l
     print(f"Found {len(bad_indices)} BAD segments.")
     print(f"Found {len(borderline_indices)} BORDERLINE segments.")
 
-    # Prepare subplots
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-    axes = axes.flatten()
+    # Prepare subplots: 3 Rows (Good, Borderline, Bad), 3 Columns (Samples)
+    num_samples_per_cat = 3
+    fig, axes = plt.subplots(3, num_samples_per_cat, figsize=(15, 10))
+    plt.subplots_adjust(hspace=0.4, wspace=0.3)
     
-    categories = [
-        ('High Quality (GOOD)', good_indices),
-        ('Low Quality (BAD)', bad_indices),
-        ('Mediocre (BORDERLINE)', borderline_indices),
-        ('Corrupted (BAD)', bad_indices) # Using BAD again for 4th slot, or pick another random BAD
+    categories_config = [
+        ('GOOD (High Quality)', good_indices),
+        ('BORDERLINE (Mediocre)', borderline_indices),
+        ('BAD (Low Quality)', bad_indices)
     ]
 
-    for i, (title, indices) in enumerate(categories):
-        ax = axes[i]
-        if len(indices) > 0:
-            # Pick a random index
-            # For the 4th slot (Corrupted), try to pick a different one if possible, or just random
-            idx = random.choice(indices)
-            segment = all_segments[idx]
-            
-            ax.plot(segment)
-            ax.set_title(title)
-            ax.set_xlabel("Sample Index") # Using index since fs might vary per seg in this simple script
-            ax.set_ylabel("CBFV [cm/s]")
-            ax.grid(True, alpha=0.3)
+    for row_idx, (cat_name, indices) in enumerate(categories_config):
+        # Select samples
+        if len(indices) >= num_samples_per_cat:
+            selected_indices = random.sample(list(indices), num_samples_per_cat)
+        elif len(indices) > 0:
+            # If fewer samples than needed, repeat with replacement
+            selected_indices = [random.choice(indices) for _ in range(num_samples_per_cat)]
         else:
-            ax.text(0.5, 0.5, "No samples found", ha='center', va='center')
-            ax.set_title(title)
+            selected_indices = []
+
+        for col_idx in range(num_samples_per_cat):
+            ax = axes[row_idx, col_idx]
             
-    plt.tight_layout()
+            if col_idx < len(selected_indices):
+                idx = selected_indices[col_idx]
+                segment = all_segments[idx]
+                
+                ax.plot(segment)
+                if col_idx == 1: # Title only on middle column for cleaner look
+                    ax.set_title(f"{cat_name}", fontsize=12, fontweight='bold')
+                
+                # Add index as small text
+                ax.text(0.02, 0.95, f"Idx: {idx}", transform=ax.transAxes, fontsize=8)
+                
+                if row_idx == 2: # X label only on bottom
+                    ax.set_xlabel("Sample Index")
+                if col_idx == 0: # Y label only on left
+                    ax.set_ylabel("CBFV [cm/s]")
+                ax.grid(True, alpha=0.3)
+            else:
+                ax.text(0.5, 0.5, "No sample", ha='center', va='center')
+                if col_idx == 1: ax.set_title(f"{cat_name}")
+            
+    plt.suptitle("Random Samples by Quality Category", fontsize=16)
     plt.savefig(output_image)
     print(f"Quality samples visualization saved to {output_image}")
 
