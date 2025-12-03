@@ -195,7 +195,13 @@ def main():
 
     # Run SQA experiments for each scenario
     for scenario in scenarios:
-        print(f"\n=== Processing SQA Scenario: {scenario} ===")
+        # Try to get threshold info for display if available
+        t_info = ""
+        if scenario == 'Custom':
+            if 'T_high' in sqi_data and 'T_low' in sqi_data:
+                t_info = f" (High={sqi_data['T_high']}, Low={sqi_data['T_low']})"
+        
+        print(f"\n=== Processing SQA Scenario: {scenario}{t_info} ===")
         
         if scenario == 'Default':
             h_q = sqi_data['healthy_quality_labels']
@@ -225,10 +231,55 @@ def main():
             all_results[f"{model_type}_{scenario}_SQAGood"] = res_sqa
             
             # --- Scenario 3: Proposed + GAN Restoration (Optional) ---
-            # GAN restoration logic would need to be adapted to use specific scenario labels if GAN was trained on them.
-            # For simplicity, we'll skip GAN loop integration here or assume one GAN model.
-            # If you want GAN per scenario, train_cyclegan needs update too.
-            # We will skip GAN loop here to focus on threshold impact.
+            if os.path.exists(generator_path):
+                print(f"--- Running GAN Restoration for {scenario} {model_type} ---")
+                # Load Generator (Reload to be safe or just once outside loop? Reloading is safer for state)
+                G = Generator().to(device)
+                G.load_state_dict(torch.load(generator_path, map_location=device))
+                G.eval()
+                
+                h_bord_mask = h_q == -1
+                i_bord_mask = i_q == -1
+                
+                X_bord_h = normalize_segs(h_segs[h_bord_mask])
+                X_bord_i = normalize_segs(i_segs[i_bord_mask])
+                
+                def restore_segments(segments):
+                    if len(segments) == 0: return np.array([])
+                    segs_gan = torch.Tensor(segments * 2 - 1).unsqueeze(1).to(device)
+                    with torch.no_grad():
+                        restored = G(segs_gan)
+                    restored = (restored.squeeze(1).cpu().numpy() + 1) / 2
+                    return restored
+
+                X_restored_h = restore_segments(X_bord_h)
+                y_restored_h = h_y[h_bord_mask]
+                X_restored_i = restore_segments(X_bord_i)
+                y_restored_i = i_y[i_bord_mask]
+                
+                # Combine Good (from above) + Restored Borderline
+                parts_X = [X_sqa]
+                parts_y = [y_sqa]
+                
+                if len(X_restored_h) > 0:
+                    parts_X.append(X_restored_h)
+                    parts_y.append(y_restored_h)
+                if len(X_restored_i) > 0:
+                    parts_X.append(X_restored_i)
+                    parts_y.append(y_restored_i)
+                    
+                if len(parts_X) > 1 or len(parts_X[0]) > 0:
+                    X_gan = np.concatenate(parts_X)
+                    y_gan = np.concatenate(parts_y)
+                    
+                    res_gan = train_scenario(f"SQA ({scenario}) + GAN", X_gan, y_gan, device, model_type=model_type, epochs=args.epochs, batch_size=args.batch_size)
+                    all_results[f"{model_type}_{scenario}_GANSQA"] = res_gan
+                else:
+                     print("No data for GAN scenario.")
+                     all_results[f"{model_type}_{scenario}_GANSQA"] = None
+            else:
+                # print("Generator not found, skipping.")
+                all_results[f"{model_type}_{scenario}_GANSQA"] = None
 
     # --- Summary Plot ---
     print("\n--- Final Summary Plot ---")

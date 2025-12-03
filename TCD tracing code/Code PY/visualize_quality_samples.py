@@ -14,7 +14,23 @@ def visualize_quality_samples(dataset_path='tcd_dataset.npz', labels_path='sqi_l
 
     # Combine healthy and icu segments for sampling
     all_segments = np.concatenate((data['healthy_valid'], data['icu_valid']))
-    all_labels = np.concatenate((labels['healthy_quality_labels'], labels['icu_quality_labels']))
+    
+    # Determine label keys (use first scenario found or default)
+    available_keys = labels.files
+    label_suffix = ''
+    # Look for keys like 'healthy_quality_labels_Tight'
+    for key in available_keys:
+        if key.startswith('healthy_quality_labels_'):
+            label_suffix = key.replace('healthy_quality_labels', '') # e.g., '_Tight'
+            break
+            
+    # Construct keys dynamically
+    h_key = f'healthy_quality_labels{label_suffix}' if f'healthy_quality_labels{label_suffix}' in labels else 'healthy_quality_labels'
+    i_key = f'icu_quality_labels{label_suffix}' if f'icu_quality_labels{label_suffix}' in labels else 'icu_quality_labels'
+    
+    print(f"Using labels from scenario: {label_suffix.replace('_', '') if label_suffix else 'Default'}")
+
+    all_labels = np.concatenate((labels[h_key], labels[i_key]))
 
     # Categorize segments
     good_indices = np.where(all_labels == 1)[0]

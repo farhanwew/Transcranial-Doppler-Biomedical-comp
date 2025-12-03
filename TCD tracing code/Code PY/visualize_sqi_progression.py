@@ -15,6 +15,8 @@ def visualize_sqi_progression(dataset_path='tcd_dataset.npz', output_image='sqi_
     all_cbfv = np.concatenate((data['healthy_valid'], data['icu_valid']))
     all_sqi_arrays = np.concatenate((data['healthy_sqi'], data['icu_sqi']))
     
+    print(all_sqi_arrays)
+    
     # 2. Calculate scalar SQI score for sorting (Median of the array)
     # Using nanmedian to handle potential NaNs in the SQI trace
     print("Calculating SQI scores for sorting...")
